@@ -1,6 +1,10 @@
 #!/bin/bash
 export PATH=$PATH:/usr/local/bin/:/usr/bin
 
+EXTRA_FILTER=Name=encrypted,Values=true
+SERVICE=JENKINS_MASTER
+
+
 # Safety feature: exit script if error is returned, or if variables not set.
 # Exit if a pipeline results in an error.
 set -ue
@@ -32,11 +36,11 @@ instance_id=$(wget -q -O- http://169.254.169.254/latest/meta-data/instance-id)
 region=$(wget -q -O- http://169.254.169.254/latest/meta-data/placement/availability-zone | sed -e 's/\([1-9]\).$/\1/g')
 
 # Set Logging Options
-logfile="/var/log/ebs-snapshot.log"
+logfile="ebs-snapshot.log"
 logfile_max_lines="5000"
 
 # How many days do you wish to retain backups for? Default: 7 days
-retention_days="7"
+retention_days="30"
 retention_date_in_seconds=$(date +%s --date "$retention_days days ago")
 
 
@@ -83,7 +87,7 @@ snapshot_volumes() {
 	 
 		# Add a "CreatedBy:AutomatedBackup" tag to the resulting snapshot.
 		# Why? Because we only want to purge snapshots taken by the script later, and not delete snapshots manually taken.
-		aws ec2 create-tags --region $region --resource $snapshot_id --tags Key=CreatedBy,Value=AutomatedBackup
+		aws ec2 create-tags --region $region --resource $snapshot_id --tags Key=CreatedBy,Value=AutomatedBackup Key=Service,Value=$SERVICE
 	done
 }
 
@@ -115,7 +119,10 @@ log_setup
 prerequisite_check
 
 # Grab all volume IDs attached to this instance
-volume_list=$(aws ec2 describe-volumes --region $region --filters Name=attachment.instance-id,Values=$instance_id --query Volumes[].VolumeId --output text)
+volume_list=$(aws ec2 describe-volumes --region $region --filters Name=attachment.instance-id,Values=$instance_id $EXTRA_FILTER --query Volumes[].VolumeId --output text)
+
+
+echo $volume_list
 
 snapshot_volumes
 cleanup_snapshots
